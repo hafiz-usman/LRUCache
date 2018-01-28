@@ -5,6 +5,7 @@
 #include <iostream>
 #include <list>
 #include <unordered_map>
+#include <memory>
 #include <assert.h>
 
 using namespace std;
@@ -36,17 +37,15 @@ public:
     // O(1) time complexity
     int get(int key)
     {
-        auto lookupTableIter = _lookupTable.find(key);
-        if (lookupTableIter == _lookupTable.end())
+        auto iterLookupTable = _lookupTable.find(key);
+        if (iterLookupTable == _lookupTable.end())
         {
             return -1;
         }
 
-        assert(lookupTableIter->first == key);
-        list<Node*>::iterator dataListIter = lookupTableIter->second;
-        Node* mostRecentlyUsedNode = *dataListIter;
-        int retVal = mostRecentlyUsedNode->val;
-
+        assert(iterLookupTable->first == key);
+        list<unique_ptr<Node>>::iterator iterDataList = iterLookupTable->second;
+        int retVal = iterDataList->get()->val;
         //
         // move this Node to front of the list since it's now the most-recently used
         //
@@ -56,9 +55,9 @@ public:
         // So we don't need to update the other _dataList iterator entries from the _lookupTable
         //
 
-        _dataList.erase(dataListIter);
-        _dataList.push_front(mostRecentlyUsedNode);
-        lookupTableIter->second = _dataList.begin();
+        _dataList.erase(iterDataList);
+        _dataList.push_front(make_unique<Node>(key, retVal));
+        iterLookupTable->second = _dataList.begin();
 
         return retVal;
     }
@@ -68,8 +67,8 @@ public:
     void put(int key, int value)
     {
         bool keyFound = false;
-        auto lookupTableIter = _lookupTable.find(key);
-        if (lookupTableIter != _lookupTable.end())
+        auto iterLookupTable = _lookupTable.find(key);
+        if (iterLookupTable != _lookupTable.end())
         {
             keyFound = true;
         }
@@ -80,43 +79,39 @@ public:
             {
                 _invalidate();
             }
-            Node* newNode = new Node(key, value);
-            _dataList.push_front(newNode);
+            _dataList.push_front(make_unique<Node>(key, value));
             auto dataListIter = _dataList.begin();
-            _lookupTable.insert(pair<int, list<Node*>::iterator>(key, dataListIter));
+            _lookupTable.insert(pair<int, list<unique_ptr<Node>>::iterator>(key, dataListIter));
         }
         else
         {
             // if the key is already found in the lookup table, update the value
             // but should we also mark it as most-recently used, i.e. move it to front of the _dataList?? Let's go with yes!
-            auto dataListIter = lookupTableIter->second;
-            Node* temp = *(dataListIter);
-            delete temp;
-            _dataList.erase(dataListIter);
-            Node* updatedNode = new Node(key, value);
-            _dataList.push_front(updatedNode);
-            lookupTableIter->second = _dataList.begin();
+            auto iterDataList = iterLookupTable->second;
+            _dataList.erase(iterDataList);
+            _dataList.push_front(make_unique<Node>(key, value));
+            iterLookupTable->second = _dataList.begin();
         }
     }
 
 private:
     int _capacity;
-    list<Node*> _dataList;
-    unordered_map<int, list<Node*>::iterator> _lookupTable;
+    list<unique_ptr<Node>> _dataList;
+    unordered_map<int, list<unique_ptr<Node>>::iterator> _lookupTable;
 
     void _invalidate()
     {
         int lookupTableSizeBefore = _lookupTable.size();
-        auto lookupTableIter = _lookupTable.begin();
 
-        auto dataListLRUIter = _dataList.end();
-        dataListLRUIter--;
+        // we can't use rbegin() because later on we have to call erase on _dataList. erase() only takes forward iterators!
+        //auto iterDataList = _dataList.rbegin();
+        
+        auto iterDataList = _dataList.end();
+        --iterDataList;
 
-        Node* nodeToDelete = *dataListLRUIter;
-        int keyToDelete = nodeToDelete->key;
-        delete nodeToDelete;
+        int keyToDelete = iterDataList->get()->key;
         _lookupTable.erase(keyToDelete);
-        _dataList.erase(dataListLRUIter);
+        _dataList.erase(iterDataList);
 
         assert(lookupTableSizeBefore == _lookupTable.size() + 1);
     }
